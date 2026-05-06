@@ -1,0 +1,125 @@
+{
+  "commands": {
+    "search": {
+      "usage": "bibox search [query] [options]",
+      "description": "Searches your local library using a fuzzy global search or specific fields.",
+      "options": {
+        "-a, --append": "Append results to the current staging area",
+        "-t, --temp": "Do not modify the staging area",
+        "--tag <expr>": "Filter by tags using boolean logic",
+        "--star <expr>": "Filter by star collections using boolean logic",
+        "--author <ex>": "Filter by author using boolean logic",
+        "--year <ex>": "Filter by year using boolean logic",
+        "--title <ex>": "Filter by title using boolean logic"
+      },
+      "examples": [
+        "bibox search \"transformer\"",
+        "bibox search --tag \"(nlp | vision) & !archive\"",
+        "bibox search --author \"vaswani\" -a"
+      ]
+    },
+    "import": {
+      "usage": "bibox import <targets_or_paths>... [-k]",
+      "description": "Intelligently imports PDFs, BibTeX files, or materializes staged [Online] papers. Duplicate PDFs are instantly skipped via MD5 hash checks.",
+      "options": {
+        "-k, --keep-keys": "Keep original cite_keys when importing BibTeX files"
+      },
+      "examples": [
+        "bibox import paper.pdf",
+        "bibox import references.bib -k",
+        "bibox import :1 :all"
+      ]
+    },
+    "tag": {
+      "usage": "bibox tag <add|remove> <target> <tags>...",
+      "description": "Manages semantic tags for papers in your library.",
+      "options": {},
+      "examples": [
+        "bibox tag add :1 nlp",
+        "bibox tag add :all machine-learning",
+        "bibox tag remove AttentionAllYou_7076 nlp"
+      ]
+    },
+    "star": {
+      "usage": "bibox star <add|remove|list|show> [star_name] [targets]...",
+      "description": "Manages star collections (playlists) for organizing papers. Star names cannot contain spaces.",
+      "options": {},
+      "examples": [
+        "bibox star add my_reading_list :1 :2",
+        "bibox star list",
+        "bibox star show my_reading_list"
+      ]
+    },
+    "stage": {
+      "usage": "bibox stage <status|add|remove|clear> [args]...",
+      "description": "Manages the temporary staging area.",
+      "options": {},
+      "examples": [
+        "bibox stage status",
+        "bibox stage add MyPaper_123",
+        "bibox stage remove :2"
+      ]
+    },
+    "comment": {
+      "usage": "bibox comment <target> [text] [-c]",
+      "description": "Adds or clears a lightweight, plain-text comment directly in the database.",
+      "options": {
+        "-c, --clear": "Wipes the existing comment"
+      },
+      "examples": [
+        "bibox comment :1 \"Check chapter 4\"",
+        "bibox comment :1 -c"
+      ]
+    },
+    "show": {
+      "usage": "bibox show <targets>... [--bibtex [version]]",
+      "description": "Displays detailed information about papers or outputs raw BibTeX.",
+      "options": {
+        "--bibtex [v]": "Outputs raw, copy-pasteable BibTeX. Optionally specify a version name."
+      },
+      "examples": [
+        "bibox show :1",
+        "bibox show :all --bibtex",
+        "bibox show :1 --bibtex published"
+      ]
+    },
+    "export": {
+      "usage": "bibox export <targets>... [--no-arxiv]",
+      "description": "Exports papers to raw, copy-pasteable BibTeX format.",
+      "options": {
+        "--no-arxiv": "Strictly filters out any version named 'arxiv'. Skips paper if no other version exists."
+      },
+      "examples": [
+        "bibox export :db > my_library.bib",
+        "bibox export :db --no-arxiv > clean.bib",
+        "bibox export :all > staged.bib"
+      ]
+    },
+    "update": {
+      "usage": "bibox update <targets>... [--update-keys]",
+      "description": "Refreshes paper metadata online, self-heals broken PDF links using hashes, and optionally synchronizes cite_keys.",
+      "options": {
+        "--update-keys": "Recalculates cite_keys based on the lexicographically first title and cascades changes to files and collections."
+      },
+      "examples": [
+        "bibox update :all",
+        "bibox update :1 :2 MyKey2024 --update-keys"
+      ]
+    },
+    "status": {
+      "usage": "bibox status [-d] [-l] [-p <num>]",
+      "description": "Displays the health, statistics, and inventory of the current library.",
+      "options": {
+        "-d, --detailed": "Show detailed statistics (top tags, missing PDFs)",
+        "-l, --list": "List all papers in the database in a paginated table",
+        "-p, --page": "Specify the page number when using the -l list view"
+      },
+      "examples": [
+        "bibox status",
+        "bibox status -d",
+        "bibox status -l",
+        "bibox status -l -p 2"
+      ]
+    }
+  }
+}

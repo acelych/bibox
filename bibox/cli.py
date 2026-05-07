@@ -1297,24 +1297,32 @@ def handle_update(args):
             db.add_paper(paper) # Save hash/relink changes immediately
             # ------------------------------------------
                 
-            query = None
+            # --- Stable Query Selection ---
+            # Prioritize: 1. Real Publisher DOI, 2. ArXiv ID, 3. Title
+            # This prevents oscillating queries if APIs return pseudo-DOIs for preprints
+            best_doi = None
+            best_arxiv = None
+            
             for v_state in paper.versions.values():
                 fields = v_state.info.fields
-                if fields.get('doi'):
-                    query = fields.get('doi')
-                    break
-                if fields.get('eprint') and fields.get('archiveprefix', '').lower() == 'arxiv':
-                    query = fields.get('eprint')
-                    break
+                candidate_doi = fields.get('doi', '').lower()
+                
+                # Check for real DOI (exclude arXiv pseudo-DOIs)
+                if candidate_doi and 'arxiv' not in candidate_doi:
+                    best_doi = candidate_doi
                     
-            if not query:
-                query = paper.title
+                # Check for explicit arXiv eprint
+                if fields.get('eprint') and fields.get('archiveprefix', '').lower() == 'arxiv':
+                    best_arxiv = fields.get('eprint')
+            
+            query = best_doi or best_arxiv or paper.title
+            # ------------------------------
                 
             tree.add(f"Query: [dim]{query}[/dim]")
             versions = api.fetch(query)
             
             if not versions:
-                tree.add("[dim]Result: No new information found online.[/dim]")
+                tree.add("Result: [dim]No new information found online.[/dim]")
             else:
                 added = 0
                 updated_versions = []

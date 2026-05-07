@@ -355,13 +355,15 @@ class ApiGetter:
             if arx_info:
                 versions['arxiv'] = arx_info
                 baseline_title = arx_info.fields.get('title')
-        elif not is_doi:
-            # Raw title search
-            arx_info = self._fetch_arxiv(query, is_arxiv_id=False)
-            if arx_info:
-                versions['arxiv'] = arx_info
-                if not baseline_title:
-                    baseline_title = arx_info.fields.get('title')
+        else:
+            # Raw title search or fallback from CrossRef
+            search_t = baseline_title if is_doi else query
+            if search_t:
+                arx_info = self._fetch_arxiv(search_t, is_arxiv_id=False)
+                if arx_info:
+                    versions['arxiv'] = arx_info
+                    if not baseline_title:
+                        baseline_title = arx_info.fields.get('title')
 
         # Strategy 3: DBLP (Good for both finding preprints and published if title is known)
         search_title = query if not (is_doi or is_arxiv) else baseline_title
@@ -386,13 +388,13 @@ class ApiGetter:
                     versions[v_name] = cr_upgrade
                 
         # If we don't have arxiv, let's try to find the preprint
+        # Make sure we didn't just get an arxiv hit from DBLP disguised under another name
         if 'arxiv' not in versions and baseline_title:
             arx_upgrade = self._fetch_arxiv(baseline_title, is_arxiv_id=False)
             if arx_upgrade:
                 if not arx_upgrade.fields.get('title') or len(arx_upgrade.fields.get('title', '')) < 10:
                     arx_upgrade.fields['title'] = baseline_title
-                if 'arxiv' not in versions:
-                    versions['arxiv'] = arx_upgrade
+                versions['arxiv'] = arx_upgrade
 
         return versions
 
@@ -564,7 +566,7 @@ class ApiGetter:
                 'year': year,
                 'journal': 'arXiv preprint',
                 'eprint': eprint,
-                'archivePrefix': 'arXiv',
+                'archiveprefix': 'arXiv',
                 'url': url_el
             }
             

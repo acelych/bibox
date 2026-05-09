@@ -18,11 +18,15 @@ This manual provides an exhaustive, command-by-command reference for every featu
 *   `--debug`: Alias for `--log-level DEBUG`. Useful for seeing detailed network API calls and PDF extraction steps.
 
 ### Auto-Completion
-Bibox supports native shell tab-completion! To enable it in your terminal, add the following to your `~/.bashrc` or `~/.zshrc`:
+Bibox supports native shell tab-completion! To enable it for your current shell (bash, zsh, or PowerShell), simply run:
+
 ```bash
-eval "$(register-python-argcomplete bibox)"
+bibox enable completion
 ```
+You can disable it at any time by running `bibox disable completion`. Remember to restart your terminal after enabling or disabling.
+
 Now, you can press `Tab` to autocomplete commands, star names (e.g., `bibox star show <Tab>`), and targeting indices (`bibox tag add :<Tab>`).
+
 Clone the repository and install it in editable mode (or standard mode) using `pip`:
 
 ```bash

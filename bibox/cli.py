@@ -4,7 +4,9 @@ import logging
 import os
 import json
 import glob
+import re
 import concurrent.futures
+from pathlib import Path
 from typing import List, Optional
 import argcomplete
 from rich.console import Console
@@ -61,6 +63,7 @@ def setup_parser() -> argparse.ArgumentParser:
     
     # Global arguments
     parser.add_argument('-h', '--help', action='store_true', help='Show this help message and exit')
+    parser.add_argument('-l', '--list-config', action='store_true', help='List full program state and configuration')
     parser.add_argument('--debug', action='store_true', help='Enable debug logging (alias for --log-level=DEBUG)')
     parser.add_argument('--log-level', type=str, choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'], default='WARNING', help='Set the logging level')
     
@@ -72,6 +75,14 @@ def setup_parser() -> argparse.ArgumentParser:
     help_parser.add_argument('help_target', nargs='?', help='Specific command to get help on')
     
     helphelp_parser = subparsers.add_parser('helphelp', help=argparse.SUPPRESS)
+    
+    # Enable feature command
+    enable_parser = subparsers.add_parser('enable', help='Enable a specific bibox feature')
+    enable_parser.add_argument('feature', choices=['completion'], help='The feature to enable')
+
+    # Disable feature command
+    disable_parser = subparsers.add_parser('disable', help='Disable a specific bibox feature')
+    disable_parser.add_argument('feature', choices=['completion'], help='The feature to disable')
 
     # Add a custom base formatter to ensure standard argparse help looks slightly cleaner if it falls back
     class CustomFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
@@ -260,7 +271,7 @@ def handle_help(args):
         return
 
     # Main help screen
-    print_logo()
+    console.print()
     table = Table(show_header=False, box=None, padding=(0, 2))
     
     table.add_row("[bold]🚀 Getting Started[/bold]", "")
@@ -1383,6 +1394,215 @@ def handle_helphelp(args):
     # This is handled mostly in main's interception, but just in case it reaches here
     print("no help for you")
 
+def get_shell_profiles() -> List[tuple]:
+    """Detect shell and return the appropriate profile path and shell name."""
+    profiles = []
+    
+    # Windows PowerShell
+    if os.name == 'nt':
+        user_profile = os.environ.get('USERPROFILE', '')
+        if user_profile:
+            # PowerShell Core / PowerShell 7+
+            pwsh_profile = Path(user_profile) / 'Documents' / 'PowerShell' / 'Microsoft.PowerShell_profile.ps1'
+            # Windows PowerShell 5.1
+            winps_profile = Path(user_profile) / 'Documents' / 'WindowsPowerShell' / 'Microsoft.PowerShell_profile.ps1'
+            
+            profiles.append(('powershell', pwsh_profile))
+            profiles.append(('powershell', winps_profile))
+            
+    # Unix-like (Linux/macOS)
+    else:
+        home = Path.home()
+        shell_env = os.environ.get('SHELL', '').lower()
+        
+        if 'zsh' in shell_env:
+            profiles.append(('zsh', home / '.zshrc'))
+        elif 'bash' in shell_env:
+            profiles.append(('bash', home / '.bashrc'))
+            
+        # Fallback if SHELL is not reliable
+        if not profiles:
+            if (home / '.zshrc').exists():
+                profiles.append(('zsh', home / '.zshrc'))
+            if (home / '.bashrc').exists():
+                profiles.append(('bash', home / '.bashrc'))
+                
+    return profiles
+
+MARKER_START = "# >>> BIBOX COMPLETION START >>>"
+MARKER_END = "# <<< BIBOX COMPLETION END <<<"
+
+def handle_enable(args):
+    if args.feature == 'completion':
+        profiles = get_shell_profiles()
+        if not profiles:
+            console.print("[red]Could not detect a supported shell (bash, zsh, powershell).[/red]")
+            return
+            
+        try:
+            import argcomplete.shell_integration as asi
+        except ImportError:
+            console.print("[red]argcomplete is not installed.[/red]")
+            return
+            
+        success_profiles = []
+        for shell_name, profile_path in profiles:
+            try:
+                code = asi.shellcode(['bibox'], use_defaults=True, shell=shell_name, complete_arguments=None)
+            except Exception:
+                if shell_name == 'bash' or shell_name == 'zsh':
+                     code = f'eval "$(register-python-argcomplete bibox)"\n'
+                elif shell_name == 'powershell':
+                     code = f'Invoke-Expression (register-python-argcomplete --shell powershell bibox)\n'
+                else:
+                     continue
+                     
+            if not profile_path.parent.exists():
+                try:
+                    profile_path.parent.mkdir(parents=True, exist_ok=True)
+                except Exception:
+                    continue
+                    
+            content = ""
+            if profile_path.exists():
+                try:
+                    with open(profile_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                except UnicodeDecodeError:
+                    with open(profile_path, 'r') as f:
+                        content = f.read()
+                        
+            if MARKER_START in content:
+                console.print(f"[yellow]Completion already enabled in {profile_path}[/yellow]")
+                success_profiles.append(profile_path)
+                continue
+                
+            block = f"\n{MARKER_START}\n{code}\n{MARKER_END}\n"
+            try:
+                with open(profile_path, 'a', encoding='utf-8') as f:
+                    f.write(block)
+                success_profiles.append(profile_path)
+            except Exception as e:
+                console.print(f"[red]Failed to write to {profile_path}: {e}[/red]")
+                
+        if success_profiles:
+            console.print("[green]✔ Tab completion successfully injected into:[/green]")
+            for p in success_profiles:
+                console.print(f"  [dim]- {p}[/dim]")
+            console.print("\n[bold]Please restart your terminal[/bold] or run `source <profile_path>` to apply changes.")
+
+def handle_disable(args):
+    if args.feature == 'completion':
+        profiles = get_shell_profiles()
+        if not profiles:
+            console.print("[red]Could not detect a supported shell profile to clean.[/red]")
+            return
+            
+        success_profiles = []
+        for shell_name, profile_path in profiles:
+            if not profile_path.exists():
+                continue
+                
+            try:
+                with open(profile_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+            except UnicodeDecodeError:
+                with open(profile_path, 'r') as f:
+                    content = f.read()
+                    
+            if MARKER_START not in content:
+                continue
+                
+            pattern = re.compile(rf'\n?{re.escape(MARKER_START)}.*?{re.escape(MARKER_END)}\n?', re.DOTALL)
+            new_content = pattern.sub('\n', content)
+            
+            try:
+                with open(profile_path, 'w', encoding='utf-8') as f:
+                    f.write(new_content)
+                success_profiles.append(profile_path)
+            except Exception as e:
+                console.print(f"[red]Failed to write cleaned profile to {profile_path}: {e}[/red]")
+                
+        if success_profiles:
+            console.print("[green]✔ Tab completion successfully removed from:[/green]")
+            for p in success_profiles:
+                console.print(f"  [dim]- {p}[/dim]")
+        else:
+            console.print("[yellow]No completion block found to disable.[/yellow]")
+
+def handle_list_config():
+    """Show the overall configuration and state of Bibox."""
+    import platform
+    import importlib.metadata
+    
+    # 1. Print header
+    try:
+        version = importlib.metadata.version('bibox')
+    except importlib.metadata.PackageNotFoundError:
+        version = "unknown"
+    console.print(f"[bold cyan]Bibox Configuration[/bold cyan] (v{version})\n")
+    
+    # 2. System and Environment
+    sys_table = Table(show_header=False, box=None, padding=(0, 2))
+    sys_table.add_column("Key", style="bold")
+    sys_table.add_column("Value")
+    sys_table.add_row("Python", f"{platform.python_version()}")
+    sys_table.add_row("OS Platform", f"{platform.system()} {platform.release()}")
+    
+    current_db_path = None
+    try:
+        from .db import BiboxDB
+        db = BiboxDB()
+        if db.is_initialized():
+            current_db_path = str(db.root_dir)
+            
+            paper_count = len(db.papers)
+            pdf_count = len(glob.glob(str(db.root_dir / "pdfs" / "*.pdf")))
+            sys_table.add_row("Current Library", f"[green]{current_db_path}[/green]")
+            sys_table.add_row("Library Stats", f"{paper_count} entries, {pdf_count} PDFs attached")
+        else:
+            sys_table.add_row("Current Library", "[dim italic]Not initialized in current path tree[/dim italic]")
+    except Exception as e:
+        sys_table.add_row("Current Library", f"[red]Error accessing database: {e}[/red]")
+
+    console.print("[bold cyan]Environment Information[/bold cyan]")
+    console.print(sys_table)
+    console.print()
+    
+    # 3. Features
+    feat_table = Table(title=None, box=None, padding=(0, 2), show_header=True)
+    feat_table.add_column("Feature", style="bold")
+    feat_table.add_column("Status")
+    feat_table.add_column("Location / Detail", style="dim")
+    
+    # Check Completion Status
+    profiles = get_shell_profiles()
+    completion_found_any = False
+    
+    for shell_name, profile_path in profiles:
+        status = "[red]Disabled[/red]"
+        if profile_path.exists():
+            try:
+                with open(profile_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                if MARKER_START in content:
+                    status = "[green]Enabled[/green]"
+                    completion_found_any = True
+            except Exception:
+                status = "[yellow]Error Reading[/yellow]"
+                
+        display_shell_name = shell_name
+        if shell_name == 'powershell':
+            if 'WindowsPowerShell' in str(profile_path):
+                display_shell_name = 'powershell (v5.1)'
+            else:
+                display_shell_name = 'pwsh (v7+)'
+                
+        feat_table.add_row(f"Tab Completion ({display_shell_name})", status, str(profile_path))
+        
+    console.print("[bold cyan]Registered Features[/bold cyan]")
+    console.print(feat_table)
+
 def main(argv: Optional[List[str]] = None):
     # Intercept -h or --help for subcommands to route them to our rich handle_help
     if argv is None:
@@ -1410,6 +1630,10 @@ def main(argv: Optional[List[str]] = None):
     parser = setup_parser()
     argcomplete.autocomplete(parser)
     args = parser.parse_args(argv)
+
+    if args.list_config:
+        handle_list_config()
+        sys.exit(0)
 
     if args.help:
         handle_help(argparse.Namespace(help_target=None))
@@ -1463,6 +1687,10 @@ def main(argv: Optional[List[str]] = None):
             handle_show(args)
         elif args.command == 'export':
             handle_export(args)
+        elif args.command == 'enable':
+            handle_enable(args)
+        elif args.command == 'disable':
+            handle_disable(args)
         elif args.command == 'helphelp':
             handle_helphelp(args)
         else:
